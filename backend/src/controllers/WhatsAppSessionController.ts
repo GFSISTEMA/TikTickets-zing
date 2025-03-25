@@ -14,6 +14,9 @@ import { getIO } from "../libs/socket";
 import { cleanupSessionFiles, forceCleanupBeforeQrCode } from "../services/WbotServices/SessionCleanupService";
 import Whatsapp from "../models/Whatsapp";
 
+// Armazena timestamps dos QR codes por sessão
+const qrCodeTimestamps = new Map<number, number>();
+
 // ====================
 // Função para armazenar uma nova sessão do WhatsApp
 // ====================

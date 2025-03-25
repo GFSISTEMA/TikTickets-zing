@@ -11,6 +11,7 @@ interface Session extends Client {
   lastPing?: number;
   monitorInterval?: any;
   checkMessages?: any;
+  isConnected?: boolean;
 }
 
 // Verifica se a conexão está realmente ativa, além do estado reportado
@@ -18,28 +19,31 @@ const checkRealConnection = async (wbot: Session): Promise<boolean> => {
   try {
     if (!wbot) return false;
     
-    // Verifica se consegue obter o estado
+    // Verifica estado com API do WhatsApp
     const state = await wbot.getState();
-    if (state !== "CONNECTED") return false;
     
-    // Faz uma requisição real ao WhatsApp
-    // Substituindo getStatus por uma verificação de informações do perfil
-    try {
-      if (wbot.info && wbot.info.wid) {
-        await wbot.getProfilePicUrl(wbot.info.wid._serialized);
-        
-        // Atualiza o timestamp do último ping bem-sucedido
-        wbot.lastPing = Date.now();
-        return true;
-      }
-      logger.error("wbot.info ou wbot.info.wid indefinido");
+    // Se não estiver conectado, atualiza propriedade
+    if (state !== "CONNECTED") {
+      wbot.isConnected = false;
       return false;
-    } catch (profileError) {
-      logger.error(`Erro ao verificar foto de perfil: ${profileError}`);
+    }
+    
+    // Realiza verificação mais profunda
+    try {
+      const profilePic = await wbot.getProfilePicUrl(wbot.info.wid._serialized);
+      // Se chegou aqui sem erros, está realmente conectado
+      wbot.lastPing = Date.now();
+      wbot.isConnected = true;
+      return true;
+    } catch (error) {
+      // Falha na verificação profunda
+      logger.error(`Erro na verificação profunda de conexão: ${error}`);
+      wbot.isConnected = false;
       return false;
     }
   } catch (error) {
     logger.error(`Erro ao verificar conexão real: ${error}`);
+    wbot.isConnected = false;
     return false;
   }
 };
@@ -55,6 +59,11 @@ const wbotMonitor = async (
     // Inicializa a propriedade lastPing
     wbot.lastPing = Date.now();
     
+    // Inicializa propriedade isConnected se não existir
+    if (wbot.isConnected === undefined) {
+      wbot.isConnected = whatsapp.status === "CONNECTED";
+    }
+    
     // Configura um intervalo para verificar a conexão real
     const pingInterval = 3 * 60 * 1000; // 3 minutos
     wbot.monitorInterval = setInterval(async () => {
@@ -67,6 +76,9 @@ const wbotMonitor = async (
           logger.warn(
             `Falsa conexão detectada para ${sessionName}. Estado reportado como CONNECTED, mas verificação falhou. Forçando reconexão...`
           );
+          
+          // Atualiza o estado de conexão
+          wbot.isConnected = false;
           
           // Limpa intervalos para evitar chamadas duplicadas
           if (wbot.monitorInterval) clearInterval(wbot.monitorInterval);
